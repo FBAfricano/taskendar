@@ -1,3 +1,4 @@
+import React from 'react' // <--- ADD THIS LINE
 import './assets/main.css'
 
 import { StrictMode } from 'react'
