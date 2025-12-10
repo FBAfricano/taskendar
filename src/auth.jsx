@@ -4,7 +4,12 @@ import { FaEye, FaEyeSlash, FaCheckCircle, FaRegCircle, FaArrowLeft, FaExclamati
 
 export default function Auth() {
   const [loading, setLoading] = useState(false)
+  
+  // --- FORM STATE ---
   const [email, setEmail] = useState('')
+  const [username, setUsername] = useState('') // New: For Signup
+  const [loginInput, setLoginInput] = useState('') // New: For "Email or Username" login
+  
   const [password, setPassword] = useState('')
   const [confirmPassword, setConfirmPassword] = useState('')
   const [view, setView] = useState('signin') 
@@ -13,7 +18,10 @@ export default function Auth() {
   const [message, setMessage] = useState('')
   const [messageType, setMessageType] = useState('error')
 
-  // --- PASSWORD CHECKS ---
+  // --- USERNAME CHECK ---
+  const [usernameAvailable, setUsernameAvailable] = useState(null); // null=unsure, true=avail, false=taken
+
+  // --- PASSWORD VALIDATION ---
   const requirements = [
     { text: "At least 6 characters", met: password.length >= 6 },
     { text: "One lowercase letter", met: /[a-z]/.test(password) },
@@ -30,9 +38,19 @@ export default function Auth() {
     const savedEmail = localStorage.getItem('taskendar_saved_email');
     if (savedEmail) {
         setEmail(savedEmail);
+        setLoginInput(savedEmail); // Pre-fill login input
         setRememberMe(true);
     }
   }, []);
+
+  // 2. Helper: Check Username Availability
+  const checkUsername = async (val) => {
+    if (val.length < 3) { setUsernameAvailable(null); return; }
+    // Query the 'profiles' table to see if username exists
+    const { data } = await supabase.from('profiles').select('username').eq('username', val).single();
+    // If we find data, the username is taken (available = false)
+    setUsernameAvailable(!data); 
+  };
 
   const handleAuth = async (e) => {
     e.preventDefault()
@@ -42,6 +60,8 @@ export default function Auth() {
 
     try {
         let result;
+        
+        // --- FORGOT PASSWORD ---
         if (view === 'forgot') {
             const { error } = await supabase.auth.resetPasswordForEmail(email, {
                 redirectTo: window.location.origin 
@@ -53,24 +73,51 @@ export default function Auth() {
             return; 
         }
 
+        // --- SIGN UP ---
         if (view === 'signup') {
-            if (password !== confirmPassword) {
-                throw new Error("Passwords do not match!");
-            }
-            if (!isPasswordValid) {
-                throw new Error("Please satisfy all password requirements.");
-            }
-            result = await supabase.auth.signUp({ email, password });
+            if (password !== confirmPassword) throw new Error("Passwords do not match!");
+            if (!isPasswordValid) throw new Error("Please satisfy all password requirements.");
+            
+            // New Username validations
+            if (usernameAvailable === false) throw new Error("Username is already taken.");
+            if (!username || username.length < 3) throw new Error("Username is too short.");
+
+            // 1. Create Auth User
+            result = await supabase.auth.signUp({ 
+                email, 
+                password,
+                options: { data: { username } } 
+            });
             if (result.error) throw result.error;
+
             setMessageType('success');
             setMessage('Account created! Please check your email then Sign In.');
             setView('signin');
             setPassword('');    
             setConfirmPassword('');
+            setUsername('');
+
+        // --- SIGN IN ---
         } else if (view === 'signin') {
-            result = await supabase.auth.signInWithPassword({ email, password });
+            let finalEmail = loginInput;
+
+            // Check if input is a Username (no '@' symbol)
+            if (!loginInput.includes('@')) {
+                const { data, error } = await supabase
+                    .from('profiles')
+                    .select('email')
+                    .eq('username', loginInput)
+                    .single();
+                
+                if (error || !data) throw new Error("Username not found.");
+                finalEmail = data.email;
+            }
+
+            // Sign in using the resolved email
+            result = await supabase.auth.signInWithPassword({ email: finalEmail, password });
             if (result.error) throw result.error;
-            if (rememberMe) localStorage.setItem('taskendar_saved_email', email);
+            
+            if (rememberMe) localStorage.setItem('taskendar_saved_email', finalEmail);
             else localStorage.removeItem('taskendar_saved_email');
         }
 
@@ -105,14 +152,51 @@ export default function Auth() {
         </h1>
         
         <form onSubmit={handleAuth} className="flex flex-col gap-4">
-          <input
-            className="p-3 bg-gray-50 border-2 border-gray-200 rounded-lg font-bold text-gray-800 focus:border-gray-900 outline-none transition"
-            type="email"
-            placeholder="Your email"
-            required
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-          />
+          
+          {/* SIGN IN: Email or Username Input */}
+          {view === 'signin' && (
+             <input
+                className="p-3 bg-gray-50 border-2 border-gray-200 rounded-lg font-bold text-gray-800 focus:border-gray-900 outline-none transition"
+                placeholder="Email or Username"
+                required
+                value={loginInput}
+                onChange={(e) => setLoginInput(e.target.value)}
+             />
+          )}
+
+          {/* SIGN UP / FORGOT: Standard Email Input */}
+          {(view === 'signup' || view === 'forgot') && (
+            <input
+                className="p-3 bg-gray-50 border-2 border-gray-200 rounded-lg font-bold text-gray-800 focus:border-gray-900 outline-none transition"
+                type="email"
+                placeholder="Your email"
+                required
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+            />
+          )}
+
+          {/* SIGN UP: Username Input */}
+          {view === 'signup' && (
+            <div className="relative">
+                <input
+                    className={`w-full p-3 bg-gray-50 border-2 rounded-lg font-bold text-gray-800 focus:border-gray-900 outline-none transition ${usernameAvailable === false ? 'border-red-500 bg-red-50' : 'border-gray-200'}`}
+                    placeholder="Choose Username"
+                    required
+                    value={username} 
+                    onChange={(e) => { 
+                        setUsername(e.target.value); 
+                        checkUsername(e.target.value); 
+                    }}
+                />
+                {/* Availability Indicator */}
+                {username.length > 2 && (
+                    <div className="absolute right-3 top-3.5 text-[10px] font-bold uppercase">
+                        {usernameAvailable ? <span className="text-green-600">Available</span> : <span className="text-red-500">Taken</span>}
+                    </div>
+                )}
+            </div>
+          )}
 
           {view !== 'forgot' && (
             <div className="relative">
@@ -146,6 +230,7 @@ export default function Auth() {
               </div>
           )}
 
+          {/* CHECKLIST (Only on Signup) */}
           {view === 'signup' && (
             <div className="bg-gray-50 p-3 rounded-lg border border-gray-100">
                 <p className="text-[10px] font-bold text-gray-400 uppercase mb-2">Password Requirements:</p>
@@ -174,13 +259,11 @@ export default function Auth() {
                     required
                     value={confirmPassword}
                     onChange={(e) => setConfirmPassword(e.target.value)}
-                    // 🛑 VISUAL ERROR: Red border + Red background on mismatch
                     className={`
                         w-full p-3 border-2 rounded-lg font-bold text-gray-800 focus:outline-none transition
                         ${confirmPassword && !doPasswordsMatch ? 'border-red-500 bg-red-50' : 'bg-gray-50 border-gray-200 focus:border-gray-900'}
                     `}
                 />
-                {/* 🛑 Exclamation Icon if mismatch */}
                 {confirmPassword && !doPasswordsMatch && (
                     <div className="absolute right-3 top-3.5 text-red-500 animate-pulse">
                         <FaExclamationCircle size={20} />
@@ -207,12 +290,12 @@ export default function Auth() {
           <button
             className={`
                 text-white font-bold py-3 rounded-lg transition uppercase tracking-wider mt-2 active:scale-95 transform duration-100
-                ${view === 'signup' && (!isPasswordValid || !doPasswordsMatch)
+                ${view === 'signup' && (!isPasswordValid || !doPasswordsMatch || !usernameAvailable)
                     ? 'bg-gray-300 cursor-not-allowed text-gray-500' 
                     : 'bg-gray-900 hover:bg-blue-700'
                 }
             `}
-            disabled={loading || (view === 'signup' && (!isPasswordValid || !doPasswordsMatch))}
+            disabled={loading || (view === 'signup' && (!isPasswordValid || !doPasswordsMatch || !usernameAvailable))}
           >
             {loading ? 'Loading...' : 
                 view === 'signup' ? 'Sign Up' : 
@@ -237,5 +320,6 @@ export default function Auth() {
         )}
       </div>
     </div>
+
   )
 }

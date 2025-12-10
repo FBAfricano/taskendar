@@ -9,10 +9,14 @@ import { FaChevronLeft, FaChevronRight, FaEye, FaEyeSlash, FaCheckCircle, FaRegC
 import { supabase } from './supabaseClient'; 
 import Sidebar from './sidebar';      
 import TaskModal from './taskModal';  
-import Auth from './auth'; 
+import Auth from './auth';
+import DayModal from './dayModal';
+
 
 function App() {
   const [session, setSession] = useState(null);
+
+  const [isDayModalOpen, setIsDayModalOpen] = useState(false);
   
   // --- PASSWORD RESET STATE ---
   const [showPasswordReset, setShowPasswordReset] = useState(false);
@@ -205,8 +209,14 @@ function App() {
 
   const handleDayClick = (day) => {
     setSelectedDate(day);
+    setIsDayModalOpen(true);
     setEditingTask(null);
-    setIsModalOpen(true);
+  };
+
+  const handleAddTaskFromDayView = () => {
+    setIsDayModalOpen(false); // Close day view
+    setEditingTask(null);     // Reset editing state
+    setIsModalOpen(true);     // Open Form
   };
 
   const handleMonthClick = (monthIndex) => {
@@ -490,6 +500,16 @@ function App() {
         onSave={saveTask}
         onDelete={deleteTask}
         taskToEdit={editingTask}
+      />
+
+      <DayModal
+        isOpen={isDayModalOpen}
+        onClose={() => setIsDayModalOpen(false)}
+        selectedDate={selectedDate}
+        tasks={tasks} // Pass all tasks
+        onAddTask={handleAddTaskFromDayView}
+        onEditTask={(task) => { setIsDayModalOpen(false); handleEditTask(task); }}
+        toggleTask={toggleTaskCompletion}
       />
     </div>
   );

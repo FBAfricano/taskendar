@@ -1,6 +1,7 @@
 import React from 'react';
-import { format, parseISO, differenceInHours } from 'date-fns';
+import { format, parseISO, differenceInCalendarDays } from 'date-fns';
 import { FaSignOutAlt } from 'react-icons/fa';
+
 
 const Sidebar = ({ tasks, toggleTask, onAddTask, onEditTask, onSignOut }) => {
   // Use ALL tasks passed from App.jsx (No filtering by Today)
@@ -13,8 +14,8 @@ const Sidebar = ({ tasks, toggleTask, onAddTask, onEditTask, onSignOut }) => {
   const accomplishedList = allTasks.filter(task => {
     if (!task.completed) return false;
     if (task.completedAt) {
-        const hoursSinceCompletion = differenceInHours(new Date(), parseISO(task.completedAt));
-        return hoursSinceCompletion < 24; 
+        const daysPassed = differenceInCalendarDays(new Date(), parseISO(task.completedAt));
+        return daysPassed < 1;
     }
     return true; 
   });
